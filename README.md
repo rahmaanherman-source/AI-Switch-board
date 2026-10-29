@@ -1,87 +1,106 @@
 # 🎛️ AI Switchboard
 
-Stop AI bot fatigue. Save API credits. Control the chaos.
+**Stop AI bot fatigue. Control the chaos. See what actually happened.**
 
-## The Problem
-Modern developers connect multiple AI assistants to the same repository: CodeRabbit, Devin, Cursor, Claude, and OpenAI. When a PR opens or a push lands, they all wake up at once. That means duplicate reviews, wasted API tokens, and an obvious slowdown on local machines.
+AI Switchboard is a GitHub-focused control plane for AI development tools. Its backend can verify GitHub webhook signatures, inspect configured tool toggles, and issue a documented CodeRabbit pause command when CodeRabbit is switched off.
 
-## The Solution
-AI Switchboard is a traffic cop for your AI stack. It sits in front of the tools you use and lets you switch each one on or off from a single dashboard. When a bot is off, the switchboard can auto-comment on a PR or skip the route entirely so the rest of your stack keeps moving without wasting time or tokens.
+> **Release truth:** the backend scaffold is not the same as a deployed, connected product. Real PR comments require a configured GitHub App installed on the target repository with the required permissions. Sentry requires a DSN. Missing configuration is reported as not configured; it is never presented as operational.
 
-## Features
-- Dark-mode dashboard inspired by an old telephone switchboard
-- Per-tool toggles for CodeRabbit, Devin, Claude, OpenAI, and Cursor
-- GitHub webhook integration for `pull_request` and `push` events
-- Unified chat route that sends prompts to the active tools only
-- JSON-based settings persistence and local configuration management
+## Current backend capabilities
+
+- HMAC verification against the original raw GitHub webhook body (x-hub-signature-256).
+- PR opened and reopened event handling.
+- GitHub App installation authentication for authorized comment actions.
+- CodeRabbit pause comment (@coderabbitai pause) when its toggle is off; duplicate pause comments are checked before posting.
+- Explicit manual-action warnings for Devin and Claude rather than invented bot commands.
+- Optional Sentry error/exception monitoring with PII collection disabled by default.
+- CORS restricted to the configured frontend origin.
+- Existing local JSON settings and AI chat routes remain in place.
 
 ## Architecture
 
-```mermaid
-graph TD
-    Dev[Developer Pushes Code] -->|GitHub Webhook| Switchboard[AI Switchboard Backend]
-    Switchboard -->|Checks Toggles| Config[Switchboard UI Config]
+\`\`\`mermaid
+flowchart LR
+  Dev[Developer] --> GH[GitHub Pull Request]
+  GH -->|Signed webhook| API[AI Switchboard API]
+  API --> Verify[Verify raw-body HMAC]
+  Verify --> Toggles[Read switchboard settings]
+  Toggles -->|CodeRabbit OFF| AppAuth[GitHub App installation auth]
+  AppAuth --> Pause[Post @coderabbitai pause]
+  Toggles -->|Unsupported provider command| Manual[Return manual action warning]
+  API --> Sentry[Sentry monitoring, when configured]
+\`\`\`
 
-    Config -->|CodeRabbit ON| CR[CodeRabbit Reviews PR]
-    Config -->|CodeRabbit OFF| MuteCR[Bot comments: @coderabbit pause]
+## Local setup
 
-    Config -->|Claude ON| Claude[Claude Generates Summary]
-    Config -->|Claude OFF| MuteClaude[Bot comments: @claude ignore]
+1. Install Node.js 20 or newer.
+2. Install workspace dependencies from the repository root:
 
-    Config -->|Devin OFF| MuteDevin[Bot comments: @devin pause]
-```
-
-```mermaid
-sequenceDiagram
-    actor Developer
-    participant UI as Switchboard UI
-    participant Backend as Express Router
-    participant AI1 as Claude API (Active)
-    participant AI2 as OpenAI API (Inactive)
-
-    Developer->>UI: Types "Fix this React bug"
-    UI->>Backend: POST /api/chat
-    Backend->>Backend: Reads active toggles
-    Backend->>AI1: Sends prompt
-    Backend--XAI2: Skips (Toggle is OFF)
-    AI1-->>Backend: Returns code fix
-    Backend-->>UI: Displays response
-```
-
-## Local Setup
-
-1. Clone the repository.
-2. Install workspace dependencies:
-   ```bash
+   \`\`\`bash
    npm install
-   ```
-3. Copy `.env.example` to `.env` and set your keys.
-4. Start the app:
-   ```bash
+   \`\`\`
+
+3. Copy .env.example to .env and set only the credentials you have configured.
+4. Start both workspaces:
+
+   \`\`\`bash
    npm run dev
-   ```
-5. Open the frontend in the browser at `http://localhost:5173`.
+   \`\`\`
 
-## Backend API
+5. Backend health check: http://localhost:4000/api/health. Frontend dev server: http://localhost:5173.
 
-The backend exposes:
-- `GET /api/config` - fetch active bot toggles
-- `POST /api/config` - update a toggle value
-- `POST /api/chat` - send a prompt to the active AI tools only
-- `POST /api/github/webhook` - verify GitHub webhook signatures and handle events
+## Configure GitHub webhook delivery
 
-## How it Works
+1. Create a GitHub App under Settings → Developer settings → GitHub Apps.
+2. Set a webhook URL pointing to your deployed backend at /api/github/webhook.
+3. Set a strong webhook secret and put the same value in GITHUB_WEBHOOK_SECRET.
+4. Subscribe to Pull request events.
+5. Grant only the permissions required for your deployment. Posting a PR comment requires Issues: Read and write; read repository metadata as needed.
+6. Install the App on the repositories it should control.
+7. Set GITHUB_APP_ID and GITHUB_PRIVATE_KEY in the server environment. Never commit actual credentials.
+8. Configure the same Sentry project DSN in SENTRY_DSN to enable exception monitoring.
 
-1. The dashboard stores state in a local JSON file under `backend/data/switchboard-settings.json`.
-2. GitHub webhooks are verified using `@octokit/webhooks` and `x-hub-signature-256`.
-3. The chat route reads the current settings and only calls the enabled services.
-4. If a bot is disabled, the system can respond with a relevant mute message instead of sending traffic to it.
+The webhook handler rejects missing or invalid signatures. It verifies the raw request body before parsing JSON. The route must remain registered before global express.json() middleware.
+
+## Environment variables
+
+| Variable | Purpose |
+|---|---|
+| GITHUB_WEBHOOK_SECRET | Validates GitHub webhook signatures |
+| GITHUB_APP_ID | Identifies the GitHub App |
+| GITHUB_PRIVATE_KEY | Signs GitHub App authentication requests |
+| SENTRY_DSN | Enables Sentry monitoring; blank means not configured |
+| SENTRY_ENVIRONMENT | Environment label sent to Sentry |
+| SENTRY_TRACES_SAMPLE_RATE | Performance tracing sample rate |
+| FRONTEND_ORIGIN | Allowed browser origin for API calls |
+| OPENAI_API_KEY | Optional OpenAI route credential |
+| ANTHROPIC_API_KEY | Optional Anthropic route credential |
+
+## Bot-muting limits
+
+- **CodeRabbit:** the handler can post @coderabbitai pause on an opened/reopened PR when its toggle is off.
+- **Devin:** no PR-comment mute command is assumed. Disable bot responses in Devin's own settings; the API reports this as a manual action.
+- **Claude:** no provider-specific PR mute command is configured here. The API reports this instead of posting a made-up command.
+- **Other AI providers:** disabling a Switchboard chat route only prevents this backend from routing prompts to that provider. It does not turn off an external product's independent GitHub bot.
+
+The current implementation checks existing comments before posting CodeRabbit's pause command. For production-scale delivery, add persistent webhook-delivery idempotency storage and a durable audit log before claiming exactly-once processing.
+
+## API
+
+- GET /api/health — backend health and Sentry configuration status.
+- GET /api/config — current tool toggles.
+- POST /api/config — update tool toggles.
+- POST /api/chat — route prompts to configured active AI services.
+- POST /api/github/webhook — verify and process GitHub webhook deliveries.
+
+## Monitoring and privacy
+
+Sentry initializes only when SENTRY_DSN is present. sendDefaultPii is disabled. Review Sentry's data scrubbing and retention settings before production use. Never put API keys, private keys, webhook secrets, or full sensitive prompts into logs.
+
+## Not yet verified
+
+These repository changes have not, by themselves, installed dependencies, run TypeScript builds, configured a GitHub App, configured Sentry, or tested a live webhook against a real repository. Treat those as UNVERIFIED until run with the required environment and permissions.
 
 ## Support
 
-AI Switchboard is free and open-source. If it saves you from wasting API credits, review noise, or bot fatigue, support the project with a tip or share it with another developer.
-
-- GitHub Sponsors: `https://github.com/sponsors/rahmaanherman-source`
-- Buy Me a Coffee: `https://www.buymeacoffee.com/rahmaanherman`
-
-If you cannot contribute financially, the best support is sharing the project, filing issues, or improving the toggle logic.
+AI Switchboard is free and open-source. Share feedback or file issues to help improve the project.
