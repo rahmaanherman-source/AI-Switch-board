@@ -20,7 +20,7 @@ const githubApp = webhookSecret && githubAppId && githubPrivateKey
 
 export function registerGithubWebhook(app: Application): void {
   // GitHub signs the untouched request bytes. Keep this route before express.json().
-  app.post('/api/github/webhook', express.raw({ type: 'application/json', limit: '2mb' }), async (req: Request, res: Response) => {
+  app.post('/api/github/webhooks', express.raw({ type: 'application/json', limit: '2mb' }), async (req: Request, res: Response) => {
     if (!verifier) {
       return res.status(503).json({ error: 'GitHub webhook is not configured.', status: 'NOT CONFIGURED' });
     }
