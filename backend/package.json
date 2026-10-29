@@ -8,7 +8,9 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@octokit/app": "^16.0.1",
     "@octokit/webhooks": "^13.2.0",
+    "@sentry/node": "^9.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
