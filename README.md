@@ -19,7 +19,7 @@ AI Switchboard is a GitHub-focused control plane for AI development tools. Its b
 
 ## Architecture
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
   Dev[Developer] --> GH[GitHub Pull Request]
   GH -->|Signed webhook| API[AI Switchboard API]
@@ -29,30 +29,30 @@ flowchart LR
   AppAuth --> Pause[Post @coderabbitai pause]
   Toggles -->|Unsupported provider command| Manual[Return manual action warning]
   API --> Sentry[Sentry monitoring, when configured]
-\`\`\`
+```
 
 ## Local setup
 
 1. Install Node.js 20 or newer.
 2. Install workspace dependencies from the repository root:
 
-   \`\`\`bash
+   ```bash
    npm install
-   \`\`\`
+   ```
 
 3. Copy .env.example to .env and set only the credentials you have configured.
 4. Start both workspaces:
 
-   \`\`\`bash
+   ```bash
    npm run dev
-   \`\`\`
+   ```
 
 5. Backend health check: http://localhost:4000/api/health. Frontend dev server: http://localhost:5173.
 
 ## Configure GitHub webhook delivery
 
 1. Create a GitHub App under Settings → Developer settings → GitHub Apps.
-2. Set a webhook URL pointing to your deployed backend at /api/github/webhook.
+2. Set a webhook URL pointing to your deployed backend at /api/github/webhooks.
 3. Set a strong webhook secret and put the same value in GITHUB_WEBHOOK_SECRET.
 4. Subscribe to Pull request events.
 5. Grant only the permissions required for your deployment. Posting a PR comment requires Issues: Read and write; read repository metadata as needed.
@@ -91,7 +91,7 @@ The current implementation checks existing comments before posting CodeRabbit's 
 - GET /api/config — current tool toggles.
 - POST /api/config — update tool toggles.
 - POST /api/chat — route prompts to configured active AI services.
-- POST /api/github/webhook — verify and process GitHub webhook deliveries.
+- POST /api/github/webhooks — verify and process GitHub webhook deliveries.
 
 ## Monitoring and privacy
 
