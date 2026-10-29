@@ -5,22 +5,26 @@ import * as Sentry from '@sentry/node';
 
 import { readSettings } from './config.js';
 
-const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET;
-const verifier = webhookSecret ? new Webhooks({ secret: webhookSecret }) : null;
+function getWebhookVerifier(): Webhooks | null {
+  const secret = process.env.GITHUB_WEBHOOK_SECRET;
+  return secret ? new Webhooks({ secret }) : null;
+}
 
-const githubAppId = process.env.GITHUB_APP_ID;
-const githubPrivateKey = process.env.GITHUB_PRIVATE_KEY?.replace(/\\n/g, '\n');
-const githubApp = webhookSecret && githubAppId && githubPrivateKey
-  ? new App({
-      appId: Number(githubAppId),
-      privateKey: githubPrivateKey,
-      webhooks: { secret: webhookSecret },
-    })
-  : null;
+function getGithubApp(): App | null {
+  const secret = process.env.GITHUB_WEBHOOK_SECRET;
+  const appId = process.env.GITHUB_APP_ID;
+  const privateKey = process.env.GITHUB_PRIVATE_KEY?.replace(/\\n/g, '\n');
+  return secret && appId && privateKey
+    ? new App({ appId: Number(appId), privateKey, webhooks: { secret } })
+    : null;
+}
 
 export function registerGithubWebhook(app: Application): void {
   // GitHub signs the untouched request bytes. Keep this route before express.json().
   app.post('/api/github/webhooks', express.raw({ type: 'application/json', limit: '2mb' }), async (req: Request, res: Response) => {
+    const verifier = getWebhookVerifier();
+    const githubApp = getGithubApp();
+
     if (!verifier) {
       return res.status(503).json({ error: 'GitHub webhook is not configured.', status: 'NOT CONFIGURED' });
     }
